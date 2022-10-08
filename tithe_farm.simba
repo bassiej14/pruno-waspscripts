@@ -7,54 +7,53 @@ begin
   Login.PlayerIndex     := 0;
   AntibanEnabled        := True; //Enables Most Antiban
   BreaksEnabled         := True; //Enables Short Breaks
-  SleepEnabled          := True; //Enables Sleep Breaks
+  SleepEnabled          := False; //Enables Sleep Breaks
   RemoteInputEnabled    := True; //Enables Remote Input
   ProgressReportEnabled := True; //Enables Graphical Progress Report
   ScriptDebugEnabled    := False; //Enables Script Debugging
 end;
 {$ENDIF}
 
-var
- SeedlingStage0: TRSObject;
-
 type
   ESeed = ( // Bologano seedling
     GOLOVANOVA, BOLOGANO, LOGAVANO
   );
-
 
 var
   CurrentSeed = ESeed.GOLOVANOVA;
 
 const
   PlanterArray: TPointArray := [
-    [145, 94], [145,106], [145, 117], [145, 130],
-    [165, 94], [165, 106], [165, 117], [165, 130],
-    [165, 154], [165, 166], [165, 177], [165, 188],
-    [145, 154], [145, 166], [145, 177], [145, 188],
-    [186, 154], [186, 166], [186, 177], [186, 188]
+    [145, 95], [145,106], [145, 118], [145, 131]
+
+  ];
+
+  WalkArray: TPointArray := [
+    [154, 95], [154, 106], [154, 118],[154, 131]
+
   ];
 
 type
   EFarmerState = (
     WALK_SPOT,
+    PLANT_SEED,
+    WAIT_STATE,
+
     LEVEL_UP,
-    DO_ACTION,
-    DO_WATERING,
-    CHANGE_SPOT,
     CLOSE_CONTEXT,
-    END_SCRIPT,
-    END_SCRIPT_NO_TOOLS
+
+    END_SCRIPT
   );
 
   TTitheFarmer = record(TBaseWalkerScript)
     State: EFarmerState;
-    Planter: TRSObject;
-    Points: TPointArray;
-    BoolBusy: Boolean;
-    BoolPlanted: Boolean;
-    RequiredItems: TRSItemArray;
-    CurrentStep: Int32;
+    Patches: TRSObject;
+    WalkLocations: TRSObject;
+
+    walkSpot: Int32;
+
+    SeedItem: TRSItem;
+    SeedPlanted: Boolean;
   end;
 
 procedure TAntiban.Setup; override;
@@ -69,30 +68,81 @@ end;
 procedure TTitheFarmer.SetupObjects;
 begin
   RSW.Setup('zeah_tithe');
-  Planter.SetupCommon(3, PlanterArray);
-  Planter.UpText := ['UNKNOWN', 'uptext'];
-  Planter.Finder.Colors += CTS2(10203232, 21, 0.17, 0.90);
 
+  Patches.SetupCommon();
+  Patches.UpText := [];
+  Patches.Finder.Colors += CTS2(3035994, 11, 0.05, 0.19);
+  Patches.SetupCommon(4, PlanterArray);
+
+  WalkLocations.SetupCommon();
+  WalkLocations.UpText := [];
+  WalkLocations.Finder.Colors += CTS2(3035994, 11, 0.05, 0.19);
+  WalkLocations.SetupCommon(4, WalkArray);
 
   case CurrentSeed of
-    ESeed.BOLOGANO:
-      begin
-        SeedlingStage0.SetupCommon();
-        SeedlingStage0.UpText := ['UNKNOWN', 'uptext'];
-        SeedlingStage0.Finder.Colors += CTS2(10203232, 21, 0.17, 0.90);
-        SeedlingStage0.SetupCommon(3, PlanterArray);
-        RequiredItems += 'Barbarian rod';
-      end;
-    ESeed.BOLOGANO:
-      begin
-        SeedlingStage0.SetupCommon();
-        SeedlingStage0.UpText := ['UNKNOWN', 'uptext'];
-        SeedlingStage0.Finder.Colors += CTS2(10203232, 21, 0.17, 0.90);
-        SeedlingStage0.SetupCommon(3, PlanterArray);
-        RequiredItems += 'Barbarian rod';
-      end;
+    ESeed.BOLOGANO: SeedItem := 'Bologano seed';
+    ESeed.GOLOVANOVA: SeedItem := 'Golovanova seed';
+    ESeed.LOGAVANO: SeedItem := 'Logavano seed';
   end;
+
+  walkSpot := 0;
+  SeedPlanted := False;
 end;
+
+function TTitheFarmer.IsLastStep(): Boolean;
+begin
+  Result := ((self.walkSpot - 1) = High(WalkArray));
+end;
+
+function TTitheFarmer.PlantSeed(): Boolean;
+var
+  MSPnt: TPoint := RSW.GetTileMS(PlanterArray[self.walkSpot]).Mean;
+begin
+  Inventory.Open;
+  wait(100, 300);
+
+  Inventory.SetSelectedSlot(0);
+  WaitUntil(Inventory.GetSelectedSlot() = 0, 100, 200);
+
+  Mouse.Move(MSPnt);
+  Mouse.Click(MOUSE_LEFT);
+  wait(5000, 10000);
+  self.WaterSeed();
+  self.SeedPlanted := True;
+end;
+
+function TTitheFarmer.WaterSeed(): Boolean;
+var
+  MSPnt: TPoint := RSW.GetTileMS(PlanterArray[self.walkSpot]).Mean;
+begin
+  Mouse.Move(MSPnt);
+  Mouse.Click(MOUSE_LEFT);
+  wait(5000, 10000);
+  self.SeedPlanted := False;
+  self.walkSpot += 1;
+end;
+
+
+function TTitheFarmer.WaitWalk(): Boolean;
+begin
+wait(200, 400);
+end;
+
+function TTitheFarmer.WalkToSpot(): Boolean;
+begin
+  if self.IsLastStep() then
+    begin
+      self.walkSpot := -1;
+      Result := False;
+    end
+  else
+    begin
+      RSW.WebWalk(WalkArray[self.walkSpot], 5, 0.15);
+      self.SeedPlanted := False;
+      Result := True;
+    end;
+end;
+
 
 
 procedure TTitheFarmer.Init(MaxActions: Int32; MaxTime: Int64); override;
@@ -104,59 +154,66 @@ begin
   RSW.Setup('zeah_tithe');
 
   Self.SetupObjects;
-  CurrentStep = 0;
 
   if not RSClient.IsLoggedIn then
     Login.LoginPlayer;
+
+  if Antiban.BioDice() then
+    Options.SetNPCAttackOption(ERSAttackOption.HIDDEN)
+  else
+    Options.SetNPCAttackOption(ERSAttackOption.ALWAYS_RIGHT_CLICK);
+
+
+
+  if ScriptDebugEnabled then
+  begin
+    DebugObjectArray += @Patches;
+    DebugObjectArray += @WalkLocations;
+  end;
 end;
 
 function TTitheFarmer.GetState: EFarmerState;
 begin
-  if WL.Activity.IsFinished then
-    Exit(EFarmerState.END_SCRIPT);
 
-  if Chat.LeveledUp then
-    Exit(EFarmerState.LEVEL_UP);
+  if (self.walkSpot >= 0) then
+    if not RSW.AtTile(WalkArray[self.walkSpot], 15) then
+      begin
+        Exit(EFarmerState.WALK_SPOT);
+      end
+    else
+      begin
+        if SeedPlanted = False then
+          begin
+            Exit(EFarmerState.PLANT_SEED);
+          end
+        else
+          begin
+            Exit(EFarmerState.WALK_SPOT);
+          end
+      end;
 
-
-//  if not Self.HasTools then
-//    Exit(END_SCRIPT_NO_TOOLS);
-//
-  if Chat.LeveledUp then
-  begin
-    boolBusy := False;
-    Exit(LEVEL_UP);
-  end;
-
-  if not boolBusy then
-    Exit(CHANGE_SPOT);
-
-  if MainScreen.IsUpText('Water Golovanova seedling') then
-    Exit(DO_WATERING);
-
-  if BoolBusy and not BoolPlanted then
-    Exit(DO_ACTION);
-
+  if Chat.LeveledUp() then
+    begin
+      Exit(EFarmerState.LEVEL_UP);
+    end;
 end;
-//
-//function HasTools: Boolean;
-//begin
-//  Result := Inventory.ContainsAll(RequiredItems);
-//end;
-
 
 procedure TTitheFarmer.Run(MaxActions: Int32; MaxTime: Int64);
 begin
-  ClearDebug;
   Self.Init(MaxActions, MaxTime);
+
+  self.WalkToSpot();
 
   repeat
     State := Self.GetState;
     Action := ToStr(State);
     Self.ProcessWhileWaiting;
-       //Debug(SeedlingStage0);
+    writeln self.walkSpot;
+
     case State of
-      EFarmerState.LEVEL_UP: Chat.HandleLevelUp;
+      EFarmerState.WALK_SPOT: self.WalkToSpot();
+      EFarmerState.WAIT_STATE: self.WaitWalk();
+      EFarmerState.PLANT_SEED: self.PlantSeed();
       EFarmerState.LEVEL_UP: Chat.HandleLevelUp;
       EFarmerState.END_SCRIPT: Break;
     end;
@@ -200,40 +257,6 @@ begin
 
   StartButton.setOnClick(@Self.StartScript);
 end;
-
-
-function TTitheFarmer.ChangeSpots: Boolean;
-var
-  Position: TPoint := RSW.GetMyPos;
-  Range: Int32;
-begin
-  Result := RSW.WebWalk(PlanterArray[CurrentStep], 10, 0.2)
-  if not Result then
-      TerminateScript('We can''t walk to the other fishing spot');
-
-
-  if Result then
-    CurrentStep = CurrentStep + 1;
-end;
-
-function TTitheFarmer.Do_action: Boolean;
-begin
-  //if Result := RSAction.StartFishing then
-  //begin
-  //  Minimap.WaitPlayerMoving(300, 6000);
-  //  WaitUntil(Self.StillFishing, 50, 4000);
-  //end;
-end;
-
-
-
-
-
-
-
-
-
-
 
 procedure TTitheFarmerConfig.Run; override;
 begin
