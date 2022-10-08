@@ -124,7 +124,7 @@ function TTitheFarmer.WalkToSpot(): Boolean;
 begin
   if self.IsLastStep() then
     begin
-      self.walkSpot = -1;
+      self.walkSpot := -1;
       Result := False;
     end
   else
@@ -181,7 +181,7 @@ begin
           end
         else
           begin
-            Exit(EFarmerState.WAIT_STATE);
+            Exit(EFarmerState.WALK_SPOT);
           end
       end;
 
@@ -201,6 +201,7 @@ begin
     State := Self.GetState;
     Action := ToStr(State);
     Self.ProcessWhileWaiting;
+    writeln self.walkSpot;
 
     case State of
       EFarmerState.WALK_SPOT: self.WalkToSpot();
