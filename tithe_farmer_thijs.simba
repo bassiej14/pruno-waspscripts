@@ -32,15 +32,16 @@ const
   ];
 
   WalkArray: TPointArray := [
-    [153, 94], [158, 93], [158, 105],[153, 105], [153, 118], [158, 118], [158, 130],[153, 130],
-    [153, 154],[158, 154],[158, 166],[153, 166], [153, 179],[158, 179],[158, 190],[153, 190],
+    [153, 94], [158, 93], [158, 105],[153, 105],
+    [153, 118], [158, 118], [158, 130],[153, 130],
+    [153, 154],[158, 154],[158, 166],[153, 166],
+    [153, 179],[158, 179],[158, 190],[153, 190],
     [178, 190],[178, 177],[178, 166],[178, 154]
   ];
 
 type
   EFarmerState = (
     WALK_SPOT,
-    SELECT_PLANT,
     PLANT_SEED,
     WAIT_STATE,
 
@@ -58,7 +59,6 @@ type
     walkSpot: Int32;
 
     SeedItem: TRSItem;
-    SeedSlot: Int32;
   end;
 
 procedure TAntiban.Setup; override;
@@ -91,7 +91,6 @@ begin
   end;
 
   walkSpot := 0;
-  SeedSlot := -1;
 end;
 
 function TTitheFarmer.IsLastStep(): Boolean;
@@ -99,16 +98,13 @@ begin
   Result := (self.walkSpot = High(WalkArray));
 end;
 
-function TTitheFarmer.SelectSeed(): Boolean;
+function TTitheFarmer.PlantSeed(): Boolean;
+var
+  MSPnt: TPoint := RSW.GetTileMS(PlanterArray[self.walkSpot]).Mean;
 begin
-
-  if Inventory.FindItem(SeedItem, SeedSlot) then
-  begin
-    if Inventory.ClickSlot(SeedSlot) then
-    begin
-      Result := True;
-    end
-  end;
+  Inventory.ClickItem(SeedItem);
+  Mouse.Move(MSPnt);
+  Mouse.Click(MOUSE_LEFT);
 end;
 
 function TTitheFarmer.WaitWalk(): Boolean;
@@ -169,14 +165,7 @@ begin
       end
     else
       begin
-        if SeedSlot >= 0 then
-          begin
-            Exit(EFarmerState.PLANT_SEED);
-          end
-        else
-          begin
-            Exit(EFarmerState.SELECT_PLANT);
-          end
+        Exit(EFarmerState.PLANT_SEED);
       end;
 
   if Chat.LeveledUp() then
@@ -199,7 +188,7 @@ begin
     case State of
       EFarmerState.WALK_SPOT: self.WalkToSpot();
       EFarmerState.WAIT_STATE: self.WaitWalk();
-      EFarmerState.SELECT_PLANT: self.SelectSeed();
+      EFarmerState.PLANT_SEED: self.PlantSeed();
       EFarmerState.LEVEL_UP: Chat.HandleLevelUp;
       EFarmerState.END_SCRIPT: Break;
     end;
