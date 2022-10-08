@@ -113,7 +113,7 @@ begin
   Mouse.Move(MSPnt);
   Mouse.Click(MOUSE_LEFT);
 
-  SeedPlanted = True;
+  self.SeedPlanted := True;
 end;
 
 function TTitheFarmer.WaitWalk(): Boolean;
@@ -175,7 +175,7 @@ begin
       end
     else
       begin
-        if not SeedPlanted then
+        if SeedPlanted = False then
           begin
             Exit(EFarmerState.PLANT_SEED);
           end
