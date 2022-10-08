@@ -104,13 +104,16 @@ function TTitheFarmer.PlantSeed(): Boolean;
 var
   MSPnt: TPoint := RSW.GetTileMS(PlanterArray[self.walkSpot]).Mean;
 begin
-  ItemFinder.Similarity := 0.8;
-  Inventory.ClickItem(SeedItem);
-  ItemFinder.Similarity := 0.999;
+  Inventory.Open;
   wait(100, 300);
+
+  Inventory.ClickSlot(0);
+  wait(100, 300);
+
+  Mouse.Move(MSPnt);
+  Mouse.Click(MOUSE_LEFT);
+
   SeedPlanted = True;
-  //Mouse.Move(MSPnt);
-  //Mouse.Click(MOUSE_LEFT);
 end;
 
 function TTitheFarmer.WaitWalk(): Boolean;
