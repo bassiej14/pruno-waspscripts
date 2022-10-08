@@ -1,0 +1,263 @@
+{$IFNDEF SCRIPT_CHAIN}
+  {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
+  {$I SRL/osr.simba}
+  {$I WaspLib/osr.simba}
+
+begin
+  Login.PlayerIndex     := 0;
+  AntibanEnabled        := True; //Enables Most Antiban
+  BreaksEnabled         := True; //Enables Short Breaks
+  SleepEnabled          := False; //Enables Sleep Breaks
+  RemoteInputEnabled    := True; //Enables Remote Input
+  ProgressReportEnabled := True; //Enables Graphical Progress Report
+  ScriptDebugEnabled    := False; //Enables Script Debugging
+end;
+{$ENDIF}
+
+type
+  ESeed = ( // Bologano seedling
+    GOLOVANOVA, BOLOGANO, LOGAVANO
+  );
+
+var
+  CurrentSeed = ESeed.GOLOVANOVA;
+
+const
+  PlanterArray: TPointArray := [
+    [145, 94], [145,106], [145, 117], [145, 130],
+    [165, 94], [165, 106], [165, 117], [165, 130],
+    [165, 154], [165, 166], [165, 177], [165, 188],
+    [145, 154], [145, 166], [145, 177], [145, 188],
+    [186, 154], [186, 166], [186, 177], [186, 188]
+  ];
+
+  WalkArray: TPointArray := [
+    [153, 94], [158, 93], [158, 105],[153, 105], [153, 118], [158, 118], [158, 130],[153, 130],
+    [153, 154],[158, 154],[158, 166],[153, 166], [153, 179],[158, 179],[158, 190],[153, 190],
+    [178, 190],[178, 177],[178, 166],[178, 154]
+  ];
+
+type
+  EFarmerState = (
+    WALK_SPOT,
+    SELECT_PLANT,
+    PLANT_SEED,
+    WAIT_STATE,
+
+    LEVEL_UP,
+    CLOSE_CONTEXT,
+
+    END_SCRIPT
+  );
+
+  TTitheFarmer = record(TBaseWalkerScript)
+    State: EFarmerState;
+    Patches: TRSObject;
+    WalkLocations: TRSObject;
+
+    walkSpot: Int32;
+
+    SeedItem: TRSItem;
+    SeedSlot: Int32;
+  end;
+
+procedure TAntiban.Setup; override;
+begin
+  inherited;
+
+  Antiban.Skills := [ERSSkill.FARMING, ERSSkill.TOTAL];
+  Antiban.MinZoom := 0;
+  Antiban.MaxZoom := 40;
+end;
+
+procedure TTitheFarmer.SetupObjects;
+begin
+  RSW.Setup('zeah_tithe');
+
+  Patches.SetupCommon();
+  Patches.UpText := [];
+  Patches.Finder.Colors += CTS2(3035994, 11, 0.05, 0.19);
+  Patches.SetupCommon(4, PlanterArray);
+
+  WalkLocations.SetupCommon();
+  WalkLocations.UpText := [];
+  WalkLocations.Finder.Colors += CTS2(3035994, 11, 0.05, 0.19);
+  WalkLocations.SetupCommon(4, WalkArray);
+
+  case CurrentSeed of
+    ESeed.BOLOGANO: SeedItem := 'Bologano seed';
+    ESeed.GOLOVANOVA: SeedItem := 'Golovanova seed';
+    ESeed.LOGAVANO: SeedItem := 'Logavano seed';
+  end;
+
+  walkSpot := 0;
+  SeedSlot := -1;
+end;
+
+function TTitheFarmer.IsLastStep(): Boolean;
+begin
+  Result := (self.walkSpot = High(WalkArray));
+end;
+
+function TTitheFarmer.SelectSeed(): Boolean;
+begin
+
+  if Inventory.FindItem(SeedItem, SeedSlot) then
+  begin
+    if Inventory.ClickSlot(SeedSlot) then
+    begin
+      Result := True;
+    end
+  end;
+end;
+
+function TTitheFarmer.WaitWalk(): Boolean;
+begin
+end;
+
+function TTitheFarmer.WalkToSpot(): Boolean;
+begin
+  if self.IsLastStep() then
+    begin
+      self.walkSpot = -1;
+      Result := False;
+    end
+  else
+    begin
+      RSW.WebWalk(WalkArray[self.walkSpot], 10, 0.2);
+      self.walkSpot += 1;
+      Result := True;
+    end;
+end;
+
+
+
+procedure TTitheFarmer.Init(MaxActions: Int32; MaxTime: Int64); override;
+begin
+  Name := 'Tithe farmer';
+
+  inherited;
+
+  RSW.Setup('zeah_tithe');
+
+  Self.SetupObjects;
+
+  if not RSClient.IsLoggedIn then
+    Login.LoginPlayer;
+
+  if Antiban.BioDice() then
+    Options.SetNPCAttackOption(ERSAttackOption.HIDDEN)
+  else
+    Options.SetNPCAttackOption(ERSAttackOption.ALWAYS_RIGHT_CLICK);
+
+
+
+  if ScriptDebugEnabled then
+  begin
+    DebugObjectArray += @Patches;
+    DebugObjectArray += @WalkLocations;
+  end;
+end;
+
+function TTitheFarmer.GetState: EFarmerState;
+begin
+
+  if (self.walkSpot >= 0) then
+    if not RSW.AtTile(WalkArray[self.walkSpot], 15) then
+      begin
+        Exit(EFarmerState.WAIT_STATE);
+      end
+    else
+      begin
+        if SeedSlot >= 0 then
+          begin
+            Exit(EFarmerState.PLANT_SEED);
+          end
+        else
+          begin
+            Exit(EFarmerState.SELECT_PLANT);
+          end
+      end;
+
+  if Chat.LeveledUp() then
+    begin
+      Exit(EFarmerState.LEVEL_UP);
+    end;
+end;
+
+procedure TTitheFarmer.Run(MaxActions: Int32; MaxTime: Int64);
+begin
+  Self.Init(MaxActions, MaxTime);
+
+  self.WalkToSpot();
+
+  repeat
+    State := Self.GetState;
+    Action := ToStr(State);
+    Self.ProcessWhileWaiting;
+
+    case State of
+      EFarmerState.WALK_SPOT: self.WalkToSpot();
+      EFarmerState.WAIT_STATE: self.WaitWalk();
+      EFarmerState.SELECT_PLANT: self.SelectSeed();
+      EFarmerState.LEVEL_UP: Chat.HandleLevelUp;
+      EFarmerState.END_SCRIPT: Break;
+    end;
+
+    Self.DoAntiban;
+  until Self.ShouldStop;
+end;
+
+var
+  TitheFarmer: TTitheFarmer;
+
+type
+  TTitheFarmerConfig = record(TScriptConfig)
+    SeedTypeSelector: TLabeledCombobox;
+  end;
+
+procedure TTitheFarmerConfig.StartScript(Sender: TObject);
+begin
+  Self.Init(Sender);
+
+  CurrentSeed := ESeed(SeedTypeSelector.GetItemIndex);
+end;
+
+procedure TTitheFarmerConfig.Setup; override;
+begin
+  inherited;
+
+  with SeedTypeSelector do
+  begin
+    Init(ScriptSettingsPanel);
+    SetCaption('Seed type:');
+    SetLeft(ScriptSettingsLabel.getLeft + 5);
+    SetTop(ScriptSettingsLabel.getTop + ScriptSettingsLabel.getHeight);
+    SetWidth(200);
+    SetStyle(csDropDownList);
+    AddItem('Golovanova seedling');
+    AddItem('Bologano seedling');
+    AddItem('Logavano seedling');
+    SetItemIndex(Ord(CurrentSeed));
+  end;
+
+  StartButton.setOnClick(@Self.StartScript);
+end;
+
+procedure TTitheFarmerConfig.Run; override;
+begin
+  Self.Setup;
+
+  inherited;
+end;
+
+var TitheFarmerConfig: TTitheFarmerConfig;
+
+{$IFNDEF SCRIPT_CHAIN}
+begin
+  {$IFDEF SCRIPT_GUI}
+  Sync(@TitheFarmerConfig.Run);
+  {$ENDIF}
+  TitheFarmer.Run(MaxActions, MaxTime);
+end.
+{$ENDIF}
