@@ -59,6 +59,7 @@ type
     walkSpot: Int32;
 
     SeedItem: TRSItem;
+    SeedPlanted: Boolean;
   end;
 
 procedure TAntiban.Setup; override;
@@ -91,6 +92,7 @@ begin
   end;
 
   walkSpot := 0;
+  SeedPlanted := False;
 end;
 
 function TTitheFarmer.IsLastStep(): Boolean;
@@ -102,9 +104,13 @@ function TTitheFarmer.PlantSeed(): Boolean;
 var
   MSPnt: TPoint := RSW.GetTileMS(PlanterArray[self.walkSpot]).Mean;
 begin
+  ItemFinder.Similarity := 0.8;
   Inventory.ClickItem(SeedItem);
-  Mouse.Move(MSPnt);
-  Mouse.Click(MOUSE_LEFT);
+  ItemFinder.Similarity := 0.999;
+  wait(100, 300);
+  SeedPlanted = True;
+  //Mouse.Move(MSPnt);
+  //Mouse.Click(MOUSE_LEFT);
 end;
 
 function TTitheFarmer.WaitWalk(): Boolean;
@@ -122,6 +128,7 @@ begin
     begin
       RSW.WebWalk(WalkArray[self.walkSpot], 10, 0.2);
       self.walkSpot += 1;
+      self.SeedPlanted := False;
       Result := True;
     end;
 end;
@@ -165,7 +172,14 @@ begin
       end
     else
       begin
-        Exit(EFarmerState.PLANT_SEED);
+        if not SeedPlanted then
+          begin
+            Exit(EFarmerState.PLANT_SEED);
+          end
+        else
+          begin
+            Exit(EFarmerState.WAIT_STATE);
+          end
       end;
 
   if Chat.LeveledUp() then
