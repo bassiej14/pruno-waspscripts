@@ -1,0 +1,372 @@
+{$IFNDEF SCRIPT_CHAIN}
+  {$IFDEF WINDOWS}{$DEFINE SCRIPT_GUI}{$ENDIF}
+  {$I SRL/osr.simba}
+  {$I WaspLib/osr.simba}
+
+begin
+  Login.PlayerIndex     := 0;
+  AntibanEnabled        := True; //Enables Most Antiban
+  BreaksEnabled         := True; //Enables Short Breaks
+  SleepEnabled          := False; //Enables Sleep Breaks
+  RemoteInputEnabled    := True; //Enables Remote Input
+  ProgressReportEnabled := True; //Enables Graphical Progress Report
+  ScriptDebugEnabled    := False; //Enables Script Debugging
+end;
+{$ENDIF}
+
+type
+  ESeed = ( // Bologano seedling
+    GOLOVANOVA, BOLOGANO, LOGAVANO
+  );
+
+var
+  CurrentSeed = ESeed.GOLOVANOVA;
+
+const
+  WaterCount := 56;
+  PlantCount := 0;
+  PlanterArray: TPointArray := [
+    [145, 95], [145,106], [145, 118], [145, 131]
+  ];
+
+  WalkArray: TPointArray := [
+    [154, 95], [154, 106], [154, 118],[154, 131]
+
+  ];
+
+type
+  EFarmerState = (
+    WALK_SPOT,
+    PLANT_SEED,
+    WATER_SEED,
+    CLEAR_SEED,
+    HARVEST_SEED,
+    WAIT_STATE,
+    GET_WATER,
+    GAMEFINISHED,
+    LEVEL_UP,
+    CLOSE_CONTEXT,
+
+    END_SCRIPT
+  );
+
+  TTitheFarmer = record(TBaseWalkerScript)
+    State: EFarmerState;
+    Patches: TRSObject;
+    WalkLocations: TRSObject;
+
+    walkSpot: Int32;
+
+    SeedItem: TRSItem;
+    SeedPlanted: Boolean;
+  end;
+
+procedure TAntiban.Setup; override;
+begin
+  inherited;
+
+  Antiban.Skills := [ERSSkill.FARMING, ERSSkill.TOTAL];
+  Antiban.MinZoom := 0;
+  Antiban.MaxZoom := 40;
+end;
+
+procedure TTitheFarmer.SetupObjects;
+begin
+  RSW.Setup('zeah_tithe');
+
+  Patches.SetupCommon();
+  Patches.UpText := [];
+  Patches.Finder.Colors += CTS2(3035994, 11, 0.05, 0.19);
+  Patches.SetupCommon(4, PlanterArray);
+
+  WalkLocations.SetupCommon();
+  WalkLocations.UpText := [];
+  WalkLocations.Finder.Colors += CTS2(3035994, 11, 0.05, 0.19);
+  WalkLocations.SetupCommon(4, WalkArray);
+
+  case CurrentSeed of
+    ESeed.BOLOGANO: SeedItem := 'Bologano seed';
+    ESeed.GOLOVANOVA: SeedItem := 'Golovanova seed';
+    ESeed.LOGAVANO: SeedItem := 'Logavano seed';
+  end;
+
+  walkSpot := 0;
+  SeedPlanted := False;
+end;
+
+function TTitheFarmer.IsLastStep(): Boolean;
+begin
+  writeln self.walkSpot;
+  writeln High(WalkArray);
+  Result := ((self.walkSpot) = (High(WalkArray)));
+end;
+
+function TTitheFarmer.GetSeedString(): String;
+begin
+  if CurrentSeed = ESeed.BOLOGANO then
+  begin
+    Result := 'Bologano seed';
+  end
+  else if CurrentSeed = ESeed.GOLOVANOVA then
+  begin
+    Result := 'Golovanova seed';
+  end
+  else if CurrentSeed = ESeed.LOGAVANO then
+  begin
+    Result := 'Logavano seed';
+
+  end
+end
+
+function TTitheFarmer.PlantSeed(): Boolean;
+var
+  MSPnt: TPoint := RSW.GetTileMS(PlanterArray[self.walkSpot]).Mean;
+begin
+  Inventory.Open;
+  wait(100, 300);
+  writeln   CurrentSeed;
+  Inventory.ClickItem(self.GetSeedString());
+  Mouse.Move(MSPnt);
+  Mouse.Click(MOUSE_LEFT);
+  if (not MainScreen.DidRedClick) then Exit;
+  wait(2000, 3000);
+end;
+
+function TTitheFarmer.WaterSeed(): Boolean;
+var
+  MSPnt: TPoint := RSW.GetTileMS(PlanterArray[self.walkSpot]).Mean;
+begin
+  Mouse.Move(MSPnt);
+  Mouse.Click(MOUSE_LEFT);
+  if (not MainScreen.DidRedClick) then Exit;
+  wait(1000, 1100);
+  self.SeedPlanted := False;
+  if self.IsLastStep() then
+  begin
+    self.walkSpot := 0;
+    wait(30000, 30100);
+  end
+  else
+  begin
+    self.walkSpot += 1;
+  end
+end;
+
+function TTitheFarmer.HasEmptyWateringCan: Boolean;
+begin
+  Result := Inventory.ContainsItem('Watering can');
+end;
+
+
+function TTitheFarmer.GetWater(): Boolean;
+var
+  WaterPnt: TPoint := RSW.GetTileMS([185, 81]).Mean;
+begin
+    RSW.WebWalk([189, 81]);
+    Inventory.Open;
+    Inventory.ClickItem('Watering can');
+    Mouse.Move(RSW.GetTileMS([185, 81]));
+    Mouse.Click(MOUSE_LEFT);
+    WaterCount = 56;
+end
+
+function TTitheFarmer.ClearSeed(): Boolean;
+var
+  MSPnt: TPoint := RSW.GetTileMS(PlanterArray[self.walkSpot]).Mean;
+begin
+  Mouse.Move(MSPnt);
+  Mouse.Click(MOUSE_LEFT);
+
+  wait(500, 1500);
+end;
+
+function TTitheFarmer.WaitWalk(): Boolean;
+begin
+wait(200, 400);
+end;
+
+function TTitheFarmer.WalkToSpot(): Boolean;
+var
+  MSPnt: TPoint := RSW.GetTileMS(PlanterArray[self.walkSpot]).Mean;
+begin
+    writeln
+    Result := RSW.WebWalk(WalkArray[self.walkSpot]);
+    self.SeedPlanted := False;
+end;
+
+function TTitheFarmer.checkPlant(point: TPoint): Boolean;
+var
+  B: TBox;
+begin
+  B := Box(point, 10, 10); //10 pixels height and width
+  Result := SRL.CountColor(CTS2(4029839, 15, 0.67, 0.18), B) > 10
+end;
+
+
+
+procedure TTitheFarmer.Init(MaxActions: Int32; MaxTime: Int64); override;
+begin
+  Name := 'Tithe farmer';
+
+  inherited;
+
+  RSW.Setup('zeah_tithe');
+
+  Self.SetupObjects;
+  if HasEmptyWateringCan then
+  begin
+    Self.GetWater();
+  end
+
+
+  if not RSClient.IsLoggedIn then
+    Login.LoginPlayer;
+
+  if Antiban.BioDice() then
+    Options.SetNPCAttackOption(ERSAttackOption.HIDDEN)
+  else
+    Options.SetNPCAttackOption(ERSAttackOption.ALWAYS_RIGHT_CLICK);
+
+
+
+  if ScriptDebugEnabled then
+  begin
+    DebugObjectArray += @Patches;
+    DebugObjectArray += @WalkLocations;
+  end;
+end;
+
+function TTitheFarmer.GetState: EFarmerState;
+var
+  MSPnt: TPoint := RSW.GetTileMS(PlanterArray[self.walkSpot]).Mean;
+begin
+
+  if (self.walkSpot >= 0) then
+    if not RSW.AtTile(WalkArray[self.walkSpot], 15) then
+      begin
+        Exit(EFarmerState.WALK_SPOT);
+      end
+    else
+      begin
+        if Inventory.CountItem(self.GetSeedString) = 0 then
+        begin
+            Exit(EFarmerState.GAMEFINISHED);
+        end
+
+        if WaterCount < 7 then
+          begin
+              Exit(EFarmerState.GET_WATER);
+          end
+        else
+          begin
+            Mouse.Move(MSPnt);
+            wait(50, 80);
+
+            if MainScreen.IsUpText(['Walk here'], 50) and checkPlant(MSPnt) then
+              begin
+                Exit(EFarmerState.PLANT_SEED);
+              end
+            else if MainScreen.IsUpText(['Water'], 50) then
+              begin
+                 Exit(EFarmerState.WATER_SEED);
+              end
+            else if MainScreen.IsUpText(['Clear'], 50) then
+              begin
+                 Exit(EFarmerState.CLEAR_SEED);
+              end
+            else if MainScreen.IsUpText(['Harvest'], 50) then
+              begin
+                 Exit(EFarmerState.HARVEST_SEED);
+              end
+          end
+      end;
+
+  if Chat.LeveledUp() then
+    begin
+      Exit(EFarmerState.LEVEL_UP);
+    end;
+end;
+
+procedure TTitheFarmer.Run(MaxActions: Int32; MaxTime: Int64);
+begin
+  Self.Init(MaxActions, MaxTime);
+
+  self.WalkToSpot();
+
+  repeat
+    State := Self.GetState;
+    Action := ToStr(State);
+    Self.ProcessWhileWaiting;
+    writeln self.walkSpot;
+
+    case State of
+      EFarmerState.WALK_SPOT: self.WalkToSpot();
+      EFarmerState.WAIT_STATE: self.WaitWalk();
+      EFarmerState.PLANT_SEED: self.PlantSeed();
+      EFarmerState.WATER_SEED: self.WaterSeed();
+      EFarmerState.CLEAR_SEED: self.ClearSeed();
+      EFarmerState.HARVEST_SEED: self.ClearSeed();
+      EFarmerState.GET_WATER: self.GetWater();
+      EFarmerState.GAMEFINISHED: self.WaitWalk();
+
+      EFarmerState.LEVEL_UP: Chat.HandleLevelUp;
+      EFarmerState.END_SCRIPT: Break;
+    end;
+
+    Self.DoAntiban;
+  until Self.ShouldStop;
+end;
+
+var
+  TitheFarmer: TTitheFarmer;
+
+type
+  TTitheFarmerConfig = record(TScriptConfig)
+    SeedTypeSelector: TLabeledCombobox;
+  end;
+
+procedure TTitheFarmerConfig.StartScript(Sender: TObject);
+begin
+  Self.Init(Sender);
+
+  CurrentSeed := ESeed(SeedTypeSelector.GetItemIndex);
+end;
+
+procedure TTitheFarmerConfig.Setup; override;
+begin
+  inherited;
+
+  with SeedTypeSelector do
+  begin
+    Init(ScriptSettingsPanel);
+    SetCaption('Seed type:');
+    SetLeft(ScriptSettingsLabel.getLeft + 5);
+    SetTop(ScriptSettingsLabel.getTop + ScriptSettingsLabel.getHeight);
+    SetWidth(200);
+    SetStyle(csDropDownList);
+    AddItem('Golovanova seedling');
+    AddItem('Bologano seedling');
+    AddItem('Logavano seedling');
+    SetItemIndex(Ord(CurrentSeed));
+  end;
+
+  StartButton.setOnClick(@Self.StartScript);
+end;
+
+procedure TTitheFarmerConfig.Run; override;
+begin
+  Self.Setup;
+
+  inherited;
+end;
+
+var TitheFarmerConfig: TTitheFarmerConfig;
+
+{$IFNDEF SCRIPT_CHAIN}
+begin
+  {$IFDEF SCRIPT_GUI}
+  Sync(@TitheFarmerConfig.Run);
+  {$ENDIF}
+  TitheFarmer.Run(MaxActions, MaxTime);
+end.
+{$ENDIF}

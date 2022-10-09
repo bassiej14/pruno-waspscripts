@@ -23,7 +23,8 @@ var
   CurrentSeed = ESeed.GOLOVANOVA;
 
 const
-  WaterCount = 0;
+  WaterCount := 56;
+  PlantCount := 0;
   PlanterArray: TPointArray := [
     [145, 95], [145,106], [145, 118], [145, 131]
   ];
@@ -41,7 +42,8 @@ type
     CLEAR_SEED,
     HARVEST_SEED,
     WAIT_STATE,
-
+    GET_WATER,
+    GAMEFINISHED,
     LEVEL_UP,
     CLOSE_CONTEXT,
 
@@ -99,16 +101,31 @@ begin
   Result := ((self.walkSpot) = (High(WalkArray)));
 end;
 
+function TTitheFarmer.GetSeedString(): String;
+begin
+  if CurrentSeed = ESeed.BOLOGANO then
+  begin
+    Result := 'Bologano seed';
+  end
+  else if CurrentSeed = ESeed.GOLOVANOVA then
+  begin
+    Result := 'Golovanova seed';
+  end
+  else if CurrentSeed = ESeed.LOGAVANO then
+  begin
+    Result := 'Logavano seed';
+
+  end
+end
+
 function TTitheFarmer.PlantSeed(): Boolean;
 var
   MSPnt: TPoint := RSW.GetTileMS(PlanterArray[self.walkSpot]).Mean;
 begin
   Inventory.Open;
   wait(100, 300);
-
-  Inventory.SetSelectedSlot(0);
-  WaitUntil(Inventory.GetSelectedSlot() = 0, 100, 200);
-
+  writeln   CurrentSeed;
+  Inventory.ClickItem(self.GetSeedString());
   Mouse.Move(MSPnt);
   Mouse.Click(MOUSE_LEFT);
   if (not MainScreen.DidRedClick) then Exit;
@@ -122,7 +139,7 @@ begin
   Mouse.Move(MSPnt);
   Mouse.Click(MOUSE_LEFT);
   if (not MainScreen.DidRedClick) then Exit;
-  wait(2000, 3000);
+  wait(1000, 1100);
   self.SeedPlanted := False;
   if self.IsLastStep() then
   begin
@@ -135,25 +152,22 @@ begin
   end
 end;
 
+function TTitheFarmer.HasEmptyWateringCan: Boolean;
+begin
+  Result := Inventory.ContainsItem('Watering can');
+end;
+
+
 function TTitheFarmer.GetWater(): Boolean;
 var
-  MSPnt: TPoint := RSW.GetTileMS([185, 81]).Mean;
+  WaterPnt: TPoint := RSW.GetTileMS([185, 81]).Mean;
 begin
-    RSW.WebWalk([185, 81]);
-    wait(1000, 3000);
+    RSW.WebWalk([189, 81]);
     Inventory.Open;
-    wait(1000, 3000);
-
     Inventory.ClickItem('Watering can');
-    wait(1000, 3000);
-    WaitUntil(Inventory.GetSelectedSlot() <= 0, 100, 200);
-
-    Mouse.Move(MSPnt);
-    wait(1000, 3000);
+    Mouse.Move(RSW.GetTileMS([185, 81]));
     Mouse.Click(MOUSE_LEFT);
-    wait(1000, 3000);
-    if (not MainScreen.DidRedClick) then Exit;
-    wait(2000, 3000);
+    WaterCount = 56;
 end
 
 function TTitheFarmer.ClearSeed(): Boolean;
@@ -167,7 +181,6 @@ begin
 end;
 
 function TTitheFarmer.WaitWalk(): Boolean;
-
 begin
 wait(200, 400);
 end;
@@ -176,8 +189,17 @@ function TTitheFarmer.WalkToSpot(): Boolean;
 var
   MSPnt: TPoint := RSW.GetTileMS(PlanterArray[self.walkSpot]).Mean;
 begin
+    writeln
     Result := RSW.WebWalk(WalkArray[self.walkSpot]);
     self.SeedPlanted := False;
+end;
+
+function TTitheFarmer.checkPlant(point: TPoint): Boolean;
+var
+  B: TBox;
+begin
+  B := Box(point, 10, 10); //10 pixels height and width
+  Result := SRL.CountColor(CTS2(4029839, 15, 0.67, 0.18), B) > 10
 end;
 
 
@@ -191,7 +213,12 @@ begin
   RSW.Setup('zeah_tithe');
 
   Self.SetupObjects;
-  Self.GetWater();
+  if HasEmptyWateringCan then
+  begin
+    Self.GetWater();
+  end
+
+
   if not RSClient.IsLoggedIn then
     Login.LoginPlayer;
 
@@ -221,26 +248,37 @@ begin
       end
     else
       begin
-        Mouse.Move(MSPnt);
-        wait(50, 80);
-        if MainScreen.IsUpText(['Walk here'], 50) then
+        if Inventory.CountItem(self.GetSeedString) = 0 then
         begin
-            Exit(EFarmerState.PLANT_SEED);
-        end
-        else if MainScreen.IsUpText(['Water'], 50) then
-        begin
-             Exit(EFarmerState.WATER_SEED);
-        end
-        else if MainScreen.IsUpText(['Clear'], 50) then
-        begin
-             Exit(EFarmerState.CLEAR_SEED);
-        end
-        else if MainScreen.IsUpText(['Harvest'], 50) then
-        begin
-             Exit(EFarmerState.HARVEST_SEED);
+            Exit(EFarmerState.GAMEFINISHED);
         end
 
+        if WaterCount < 7 then
+          begin
+              Exit(EFarmerState.GET_WATER);
+          end
+        else
+          begin
+            Mouse.Move(MSPnt);
+            wait(50, 80);
 
+            if MainScreen.IsUpText(['Walk here'], 50) and checkPlant(MSPnt) then
+              begin
+                Exit(EFarmerState.PLANT_SEED);
+              end
+            else if MainScreen.IsUpText(['Water'], 50) then
+              begin
+                 Exit(EFarmerState.WATER_SEED);
+              end
+            else if MainScreen.IsUpText(['Clear'], 50) then
+              begin
+                 Exit(EFarmerState.CLEAR_SEED);
+              end
+            else if MainScreen.IsUpText(['Harvest'], 50) then
+              begin
+                 Exit(EFarmerState.HARVEST_SEED);
+              end
+          end
       end;
 
   if Chat.LeveledUp() then
@@ -268,6 +306,8 @@ begin
       EFarmerState.WATER_SEED: self.WaterSeed();
       EFarmerState.CLEAR_SEED: self.ClearSeed();
       EFarmerState.HARVEST_SEED: self.ClearSeed();
+      EFarmerState.GET_WATER: self.GetWater();
+      EFarmerState.GAMEFINISHED: self.WaitWalk();
 
       EFarmerState.LEVEL_UP: Chat.HandleLevelUp;
       EFarmerState.END_SCRIPT: Break;
