@@ -26,13 +26,22 @@ const
   WaterCount := 56;
   PlantCount := 0;
   PlanterArray: TPointArray := [
-    [145, 95], [145,106], [145, 118], [145, 131]
+    [2636, 2406], [2656, 2406], [2656, 2418], [2636, 2418],
+    [2636, 2432], [2656, 2432], [2656, 2442], [2636, 2442]
+    //,
+    //[2636, 2467], [2656, 2467], [2656, 2478], [2636, 2478],
+    //[2636, 2492], [2656, 2492]
   ];
 
   WalkArray: TPointArray := [
-    [154, 95], [154, 106], [154, 118],[154, 131]
-
+    [2636, 2406], [2648, 2406], [2648, 2418], [2636,2418],
+    [2636, 2432], [2648, 2432], [2648, 2442], [2636, 2442]
+    //,
+    //[2644, 2467] , [2648, 2467], [2648, 2478], [2644, 2478],
+    //[2644, 2492], [2648, 2492]
   ];
+  PlantedArray: TPointArray := [];
+
 
 type
   EFarmerState = (
@@ -72,7 +81,7 @@ end;
 
 procedure TTitheFarmer.SetupObjects;
 begin
-  RSW.Setup('zeah_tithe');
+  RSW.Setup('x2493y2310');
 
   Patches.SetupCommon();
   Patches.UpText := [];
@@ -96,9 +105,7 @@ end;
 
 function TTitheFarmer.IsLastStep(): Boolean;
 begin
-  writeln self.walkSpot;
-  writeln High(WalkArray);
-  Result := ((self.walkSpot) = (High(WalkArray)));
+    Result := ((self.walkSpot) = (High(WalkArray)));
 end;
 
 function TTitheFarmer.GetSeedString(): String;
@@ -123,12 +130,12 @@ var
   MSPnt: TPoint := RSW.GetTileMS(PlanterArray[self.walkSpot]).Mean;
 begin
   Inventory.Open;
-  wait(100, 300);
-  writeln   CurrentSeed;
+
   Inventory.ClickItem(self.GetSeedString());
+  wait(100, 300);
   Mouse.Move(MSPnt);
   Mouse.Click(MOUSE_LEFT);
-  if (not MainScreen.DidRedClick) then Exit;
+  PlantedArray.Insert(PlanterArray[self.walkSpot], High(PlantedArray));
   wait(2000, 3000);
 end;
 
@@ -138,13 +145,11 @@ var
 begin
   Mouse.Move(MSPnt);
   Mouse.Click(MOUSE_LEFT);
-  if (not MainScreen.DidRedClick) then Exit;
-  wait(1000, 1100);
+  wait(2000, 2500);
   self.SeedPlanted := False;
   if self.IsLastStep() then
   begin
     self.walkSpot := 0;
-    wait(30000, 30100);
   end
   else
   begin
@@ -154,20 +159,18 @@ end;
 
 function TTitheFarmer.HasEmptyWateringCan: Boolean;
 begin
-  Result := Inventory.ContainsItem('Watering can');
+  Result := Inventory.ContainsItem('Watering can').count();
 end;
 
 
 function TTitheFarmer.GetWater(): Boolean;
-var
-  WaterPnt: TPoint := RSW.GetTileMS([185, 81]).Mean;
 begin
-    RSW.WebWalk([189, 81]);
+    RSW.WebWalk([2670, 2394]);
     Inventory.Open;
     Inventory.ClickItem('Watering can');
-    Mouse.Move(RSW.GetTileMS([185, 81]));
+    Mouse.Move(RSW.GetTileMS([2675, 2394]));
     Mouse.Click(MOUSE_LEFT);
-    WaterCount = 56;
+    Result := WaitUntil(HasEmptyWateringCan = False, 200, 1000);
 end
 
 function TTitheFarmer.ClearSeed(): Boolean;
@@ -176,7 +179,7 @@ var
 begin
   Mouse.Move(MSPnt);
   Mouse.Click(MOUSE_LEFT);
-
+  PlantedArray.Del(PlantedArray.find(PlanterArray[self.walkSpot]));
   wait(500, 1500);
 end;
 
@@ -189,7 +192,6 @@ function TTitheFarmer.WalkToSpot(): Boolean;
 var
   MSPnt: TPoint := RSW.GetTileMS(PlanterArray[self.walkSpot]).Mean;
 begin
-    writeln
     Result := RSW.WebWalk(WalkArray[self.walkSpot]);
     self.SeedPlanted := False;
 end;
@@ -199,7 +201,8 @@ var
   B: TBox;
 begin
   B := Box(point, 10, 10); //10 pixels height and width
-  Result := SRL.CountColor(CTS2(4029839, 15, 0.67, 0.18), B) > 10
+  writeln  SRL.CountColor(CTS2(4029839, 15, 0.67, 0.18), B);
+  Result := SRL.CountColor(CTS2(4029839, 15, 0.67, 0.18), B) >= 1
 end;
 
 
@@ -213,6 +216,7 @@ begin
   RSW.Setup('zeah_tithe');
 
   Self.SetupObjects;
+
   if HasEmptyWateringCan then
   begin
     Self.GetWater();
@@ -264,9 +268,16 @@ begin
 
             if MainScreen.IsUpText(['Walk here'], 50) and checkPlant(MSPnt) then
               begin
-                Exit(EFarmerState.PLANT_SEED);
+                Exit(EFarmerState.WAIT_STATE);
               end
-            else if MainScreen.IsUpText(['Water'], 50) then
+            else if MainScreen.IsUpText(['Walk here'], 50) then
+            begin
+                Exit(EFarmerState.PLANT_SEED);
+            end
+
+
+
+            if MainScreen.IsUpText(['Water'], 50) then
               begin
                  Exit(EFarmerState.WATER_SEED);
               end
@@ -297,7 +308,7 @@ begin
     State := Self.GetState;
     Action := ToStr(State);
     Self.ProcessWhileWaiting;
-    writeln self.walkSpot;
+
 
     case State of
       EFarmerState.WALK_SPOT: self.WalkToSpot();
