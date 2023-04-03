@@ -1,0 +1,318 @@
+{$IFDEF WINDOWS}
+{$DEFINE SCRIPT_GUI}
+{$ENDIF}
+{$I SRL-T/osr.simba}
+{$I WaspLib/osr.simba}
+
+begin
+  Login.PlayerIndex := 0;
+  StatsPayload.Username := '';
+end;
+
+type
+  ETask = (HerbRun);
+
+Var
+  Walker : TRSWalker;
+  CurrentTask: ETask := ETask.HerbRun;
+  CurrentIndex := 0;
+  InventoryReady: Boolean := False;
+  WeissUnlocked: Boolean := False;
+  PortPhasmatysUnlocked: Boolean := True;
+  FarmingGuildUnlocked: Boolean := False;
+  MagicSecateursUnlocked: Boolean := True;
+  Seed: String := "Ranarr seed";
+  CompostType: String := "Bottomless compost bucket";
+  Locations := [0,1,2,3,4,5,6];
+  ResetLocations := [0,1,2,3,4,5,6];
+  EmptyArray := [];
+
+type
+  EState = (WAIT_STATE, WITHDRAW_SUPPLIES, RESET, RUNLOOP);
+  TScript = record
+     (TBaseWalkerScript) State: EState;
+  end;
+
+const
+  CLAN_WARS_AREA: TBox       = [5128, 4047, 5182, 4133];
+  FALADOR_AREA: TBox         = [7051, 2796, 7750, 3300];
+  PORT_PHASMATYS_AREA: TBox  = [9729, 2265, 10098, 2420];
+  ARDOUGNE_AREA: TBox        = [5854, 2854, 6200, 3358];
+  CATHERBY_AREA: TBox        = [6386, 2470, 6726, 2672];
+  HOSIDIUS_AREA: TBox        = [2272, 2191, 2440, 2441];
+  WEISS_AREA: TBox           = [6733, 630, 6997, 813];
+  FARMING_GUILD_AREA: TBox   = [239, 1355, 528, 1655];
+
+function InArea(): Boolean
+begin
+  case CurrentIndex of
+    0: Result := FALADOR_AREA.Contains(Walker.GetMyPos());
+    1: Result := PORT_PHASMATYS_AREA.Contains(Walker.GetMyPos());
+    2: Result := ARDOUGNE_AREA.Contains(Walker.GetMyPos());
+    3: Result := CATHERBY_AREA.Contains(Walker.GetMyPos());
+    4: Result := HOSIDIUS_AREA.Contains(Walker.GetMyPos());
+    5: Result := WEISS_AREA.Contains(Walker.GetMyPos());
+    6: Result := FARMING_GUILD_AREA.Contains(Walker.GetMyPos());
+  end;
+end;
+
+function InCWars(): Boolean
+begin
+  Result := CLAN_WARS_AREA.Contains(Walker.GetMyPos());
+end;
+
+procedure TAntiban.Setup(); override;
+begin
+  inherited;
+  Antiban.Skills := [ERSSkill.TOTAL, ERSSkill.FARMING];
+  Antiban.MinZoom := 15;
+  Antiban.MaxZoom := 40;
+end;
+
+procedure TScript.Init(MaxActions: Int32; MaxTime: Int64); override;
+begin
+  Name := 'FarmRunner';
+  inherited;
+  RSW.Setup();
+  if not RSClient.IsLoggedIn() then
+    Login.LoginPlayer();
+  writeln("initDone");
+
+end;
+
+procedure Banking;
+begin
+  WriteLn("Banking");
+  if not Bank.Open() then
+    Exit;
+
+  WriteLn("Bank Open");
+
+  if bank.CountItem("Guam seed") <= 9 then
+    Terminatescript("No more seeds in bank!");
+
+  if not Inventory.ContainsItem("Ring of dueling(8)") then
+    if not Bank.WithdrawItem(['Ring of dueling(8)', 1, False], False) then
+      Terminatescript("No more rings of dueling or failed to withdraw them.");;
+
+  if (FarmingGuildUnlocked) then
+    if not Inventory.ContainsItem("Skills necklace(8)") then
+      if not Bank.WithdrawItem(['Skills necklace(8)', 1, False], False) then
+        Terminatescript("No more skilsl necklaces or failed to withdraw them.");;
+
+  if not Inventory.ContainsItem("Rake") then
+    if not Bank.WithdrawItem(['Rake', 1, False], False) then
+      Terminatescript("No more Rake in bank!");
+
+  if not Inventory.ContainsItem("Spade") then
+    if not Bank.WithdrawItem(['Spade', 1, False], False) then
+      Terminatescript("No more Spade in bank!");
+
+  if not Inventory.ContainsItem("Seed dibber") then
+    if not Bank.WithdrawItem(['Seed dibber', 1, False], False) then
+      Terminatescript("No more Seed dibber in bank!");
+
+  if (MagicSecateursUnlocked) then
+    if not Inventory.ContainsItem("Magic secateurs") then
+      if not Bank.WithdrawItem(['Magic secateurs', 1, False], False) then
+        Terminatescript("No more Magic secateurs in bank!");
+
+  if (PortPhasmatysUnlocked) then
+    if not Inventory.ContainsItem("Ectophial") then
+      if not Bank.WithdrawItem(['Ectophial', 1, False], False) then
+        Terminatescript("No more Ectophial in bank!");
+
+  if not Inventory.ContainsItem("Falador teleport") then
+    if not Bank.WithdrawItem(['Falador teleport', 1, False], False) then
+      Terminatescript("No more Falador teleport in bank!");
+
+  if not Inventory.ContainsItem("Ardougne teleport") then
+    if not Bank.WithdrawItem(['Ardougne teleport', 1, False], False) then
+      Terminatescript("No more Ardougne teleport in bank!");
+
+  if not Inventory.ContainsItem("Camelot teleport") then
+    if not Bank.WithdrawItem(['Camelot teleport', 1, False], False) then
+      Terminatescript("No more Camelot teleport in bank!");
+
+  if not Inventory.ContainsItem("Teleport to house") then
+    if not Bank.WithdrawItem(['Teleport to house', 1, False], False) then
+      Terminatescript("No more Teleport to house in bank!");
+
+  if (WeissUnlocked) then
+    if not Inventory.ContainsItem("Icy basalt") then
+      if not Bank.WithdrawItem(['Icy basalt', 1, False], False) then
+        Terminatescript("No more Icy basalt in bank!");
+
+  if (CompostType = "Bottomless compost bucket") then
+  begin
+    if not Inventory.ContainsItem("Bottomless compost bucket") then
+      if not Bank.WithdrawItem(['Bottomless compost bucket', 1, False], False) then
+        Terminatescript("No more compost in bank!");
+  end
+  else
+  begin
+    if not Inventory.ContainsItem("CompostType") then
+      if not Bank.WithdrawItem(['CompostType', 10, False], False) then
+        Terminatescript("No more compost in bank!");
+  end;
+
+  if not Inventory.ContainsItem(Seed) then
+    if Bank.WithdrawItem([Seed, BANK_WITHDRAW_ALL, False], True) then
+      Waituntil(Inventory.ContainsItem(Seed), random(750, 1500), 5000);
+
+  Mainscreen.CloseInterface();
+  InventoryReady := true;
+end;
+
+procedure TeleToCWars;
+begin
+  Inventory.ClickItem("Ring of dueling(1)", "Rub");
+  Waituntil(Chat.FindOption("Castle Wars "), 150, 2000);
+  Chat.ClickOption("Castle Wars", True);
+  Waituntil(InCWars, 250, 8000);
+end;
+
+function TeleToFalador: boolean;
+begin
+  Inventory.ClickItem("Falador teleport");
+  Waituntil(InArea, 250, 8000);
+  Result := Walker.WebWalk([5164, 4115], 0, 0.1);
+end;
+
+function TeleToPortPhasmatys: boolean;
+begin
+  Inventory.ClickItem("Ectophial");
+  Waituntil(InArea, 250, 8000);
+  Result := Walker.WebWalk([5164, 4115], 0, 0.1);
+end;
+
+function TeleToArdougne: boolean;
+begin
+  Inventory.ClickItem("Ardougne teleport");
+  Waituntil(InArea, 250, 8000);
+  Result := Walker.WebWalk([5164, 4115], 0, 0.1);
+end;
+
+function TeleToCatherby: boolean;
+begin
+  Inventory.ClickItem("Camelot teleport");
+  Waituntil(InArea, 250, 8000);
+  Result := Walker.WebWalk([5164, 4115], 0, 0.1);
+end;
+
+function TeleToHosidius: boolean;
+begin
+  Inventory.ClickItem("Teleport to house");
+  Waituntil(InArea, 250, 8000);
+  Result := Walker.WebWalk([5164, 4115], 0, 0.1);
+end;
+
+function TeleToWeiss: boolean;
+begin
+  Inventory.ClickItem("Icy basalt");
+  Waituntil(InArea, 250, 8000);
+  Result := Walker.WebWalk([5164, 4115], 0, 0.1);
+end;
+
+function TeleToFarmingGuild: boolean;
+begin
+  Inventory.ClickItem("Skills necklace(1)", "Rub");
+  Waituntil(Chat.FindOption("Farming Guild"), 150, 2000);
+  Chat.ClickOption("Farming Guild", True);
+  Waituntil(InArea, 250, 8000);
+  Result := Walker.WebWalk([5164, 4115], 0, 0.1);
+end;
+
+function Tele(): boolean;
+begin
+  case CurrentIndex of
+    0: Result := TeleToFalador;
+    1: Result := TeleToPortPhasmatys;
+    2: Result := TeleToArdougne;
+    3: Result := TeleToCatherby;
+    4: Result := TeleToHosidius;
+    5: Result := TeleToWeiss;
+    6: Result := TeleToFarmingGuild;
+  end;
+end;
+
+function DoPlanting(): Boolean;
+begin
+  Result := True;
+end;
+
+procedure LoopLocations();
+begin
+  while Length(Locations) > 0 do
+  begin
+    CurrentIndex := Random(High(Locations));
+    if (Locations[CurrentIndex] = 1) then
+      if (not (PortPhasmatysUnlocked)) then
+        break;
+    if (Locations[CurrentIndex] = 5) then
+      if (not (WeissUnlocked)) then
+        break;
+    if (Locations[CurrentIndex] = 6) then
+      if (not (FarmingGuildUnlocked)) then
+        break;
+    Tele();
+    DoPlanting();
+    //Delete(Locations, CurrentIndex);
+  end;
+end;
+
+function TScript.GetState(): EState;
+begin
+  if(not(InventoryReady)) then
+    Exit(EState.WITHDRAW_SUPPLIES);
+  if(InventoryReady AND (Length(Locations) > 0)) then
+    Exit(Estate.RUNLOOP);
+  if(InventoryReady AND (Length(Locations) = 0)) then
+    Exit(Estate.RESET);
+  Exit(EState.WAIT_STATE);
+end;
+
+procedure TScript.Run(MaxActions: Int32; MaxTime: Int64);
+begin
+  Self.Init(MaxActions, MaxTime);
+  repeat
+    State := Self.GetState();
+    Action := ToStr(State);
+
+    case State of
+      WAIT_STATE: Wait(500, 800);
+      WITHDRAW_SUPPLIES: Banking;
+      RUNLOOP: LoopLocations;
+      RESET: Wait(500, 800);
+    end;
+    Self.DoAntiban;
+  until Self.ShouldStop();
+end;
+
+var
+  Script: TScript;
+{$IFDEF SCRIPT_GUI}
+
+type
+  TConfig = record
+     (TScriptForm) Selector: TLabeledCombobox;
+  end;
+
+procedure TConfig.StartScript(Sender: TObject);
+begin
+  Self.Init(Sender);
+  CurrentTask := ETask(Selector.Combobox.getItemIndex);
+end;
+
+procedure TConfig.Run(); override;
+begin
+  Self.Setup;
+  inherited;
+end;
+
+var
+  Config: TConfig;
+{$ENDIF}
+begin
+  Script.Run(WLSettings.MaxActions, WLSettings.MaxTime);
+end.
