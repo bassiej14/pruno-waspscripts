@@ -1,0 +1,59 @@
+{$DEFINE SRL_USE_REMOTEINPUT}
+{$I SRL-T/osr.simba}
+{$I WaspLib/osr.simba}
+
+type
+  TScript = record
+    RSW: TRSWalker;
+  end;
+
+var
+  Bot: TScript;
+  RemoteInput: TRemoteInput;
+
+procedure TScript.Init();
+begin
+  Mouse.Speed := 20;
+  Mouse.Distribution := MOUSE_DISTRIBUTION_GAUSS;
+  MM2MS.ZoomLevel := Options.GetZoomLevel();
+  Self.RSW.Setup();
+end;
+
+procedure TScript.Run();
+begin
+  RemoteInput.Setup();
+  if Inventory.ContainsItem('Oak logs') then
+  begin
+    RSW.WebWalk([8176, 2487]);
+  end
+  repeat
+    if Inventory.ContainsItem('Oak logs') then
+    begin
+      repeat
+        Inventory.use('Tinderbox', 'Oak logs');
+        Waituntil(XPbar.EarnedXP, 1000, 10000);
+      until not Inventory.ContainsItem('Oak logs')
+    end;
+    if not Inventory.ContainsItem('Oak logs') then
+    begin
+      Inventory.SetSelectedItem('Noted Oak logs');
+      wait(1000, 11000);
+      RSObjects.GEBank.SelectOption(['Use']);
+      wait(3000, 3200);
+      Mouse.Click(MOUSE_LEFT);
+      wait(2000, 3000);
+      Chat.ClickOption('Yes');
+      wait(1000, 1100);
+      if Inventory.ContainsItem('Oak logs') then
+      begin
+        RSW.WebWalk([8176, 2487]);
+      end
+    end
+  until not Inventory.ContainsItem('Noted Oak logs');
+end;
+
+begin
+  if RSClient.IsLoggedIn() then
+    Bot.Init();
+  Bot.Run();
+end.
