@@ -8,11 +8,10 @@
 begin
   Login.PlayerIndex := 0;
   WLSettings.Antiban.Enabled         := True; //Enables Most Antiban
-  WLSettings.Breaks                  := False; //Enables Short Breaks
-  WLSettings.Sleep.Enabled           := False; //Enables Sleep Breaks
+  WLSettings.Breaks                  := True; //Enables Short Breaks
+  WLSettings.Sleep.Enabled           := True; //Enables Sleep Breaks
   WLSettings.RemoteInput.Enabled     := True; //Enables Remote Input
   WLSettings.RemoteInput.HUDReport   := False; //Enables Graphical Progress Report
-  //RSHeightmap .Enabled := True;     RSClient.Image.Clear(); //terminatescript();
 end;
 
 
@@ -20,7 +19,7 @@ type
   ESeed = (GOLOVANOVA, BOLOGANO, LOGAVANO);
 
 var
-  CurrentSeed = ESeed.BOLOGANO;
+  CurrentSeed = ESeed.GOLOVANOVA;
 
 const
   UpgradeSeedBasedOnLevel = True;
@@ -57,7 +56,6 @@ end;
 procedure TTitheFarmer.SetupObjects();
 begin
   Self.RSW.Setup([RSRegions.TITHE_FARM]);
-  //patches.Setup();
   Patches.UpText := [];
   Patches.Finder.Colors += CTS2(3035994, 11, 0.05, 0.19);
   Patches.Setup(4, PlanterArray);
@@ -96,6 +94,7 @@ begin
 
   if not Inventory.SetSelectedItem(Self.GetSeedString()) then
     Exit;
+
   Cuboid := RSW.GetCuboidMS(PlanterArray[Self.walkSpot],[1.5,1.5,0]);
   Mouse.Click(Cuboid.MinAreaRect(),MOUSE_LEFT);
 
@@ -106,8 +105,10 @@ begin
   Cuboid := RSW.GetCuboidMS(PlanterArray[Self.walkSpot], [1.5,1.5,0]);
   Mouse.Click(Cuboid.MinAreaRect(),MOUSE_LEFT);
   Wait(2000, 2500);
+
   if not WaitUntil(Mainscreen.IsUpText(['Water']), 50, 3000) then
     exit;
+
   Mouse.Click(MOUSE_LEFT);
   WaitUntil(not (MainScreen.IsUpText(['Water'], 50)), 200, 2000);
 end;
@@ -148,8 +149,6 @@ begin
     Exit;
 
   upText := MainScreen.GetUpText();
-
-
 
   if Self.Filter.UpText and (Self.UpText in upText) then
     Exit(True);
@@ -209,27 +208,29 @@ function TTitheFarmer.checkPlants(CheckHealth: Boolean= False): Boolean;
 var
   I: Int32;
 begin
-if (Self.SeedPlanted = False) then
-  Exit(False);
-Self.SeedPlanted := False;
-for I := 0 to High(Planterarray) do
-begin
-  if not Minimap.PointInZoomRectangle(RSW.WorldToMM(Planterarray[I])) then
-  begin
-    RSW.WebWalk(Walkarray[I]);
-    WaitUntil(RSW.AtTile(Walkarray[I], 15), 50, 5000);
-  end;
-  if (Self.checkPlant(RSW.GetCuboidMS(PlanterArray[I],[1.5,1.5,0],[1,1]))) then
-  begin
-    Self.SeedPlanted := True;
-    if not CheckHealth then
-      Exit(True)
-    else
-    if not Self.PatchWet(RSW.GetTileMS(Planterarray[I]).Mean) then
-      Exit(True);
-  end;
-end;
-Exit(False);
+    if (Self.SeedPlanted = False) then
+      Exit(False);
+
+    Self.SeedPlanted := False;
+
+    for I := 0 to High(Planterarray) do
+    begin
+      if not Minimap.PointInZoomRectangle(RSW.WorldToMM(Planterarray[I])) then
+      begin
+        RSW.WebWalk(Walkarray[I]);
+        WaitUntil(RSW.AtTile(Walkarray[I], 15), 50, 5000);
+      end;
+      if (Self.checkPlant(RSW.GetCuboidMS(PlanterArray[I],[1.5,1.5,0],[1,1]))) then
+      begin
+        Self.SeedPlanted := True;
+        if not CheckHealth then
+          Exit(True)
+        else
+        if not Self.PatchWet(RSW.GetTileMS(Planterarray[I]).Mean) then
+          Exit(True);
+      end;
+    end;
+    Exit(False);
 end;
 
 function TTitheFarmer.ProgressStep(): Boolean;
