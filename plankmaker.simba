@@ -1,0 +1,149 @@
+{$IFDEF WINDOWS}
+{$DEFINE SCRIPT_GUI}
+{$ENDIF}
+{$I SRL-T/osr.simba}
+{$I WaspLib/osr.simba}
+
+begin
+  Login.PlayerIndex := 0;
+  StatsPayload.Username := '';
+end;
+
+type
+  ETask = (CATCH_BUTTERFLIES);
+
+var
+  CurrentTask: ETask := ETask.CATCH_BUTTERFLIES;
+
+const
+  ButterFlyArray: TPointArray := [[4661, 2327], [4741, 2263], [4809, 2195]];
+
+type
+  EState = (WAIT_STATE, CLICKBUTTERFLYSTATE, CLEARINV, END_SCRIPT);
+  TScript = record
+     (TBaseWalkerScript) State: EState;
+    walkSpot: Int32;
+  end;
+
+procedure TAntiban.Setup(); override;
+begin
+  inherited;
+  Antiban.Skills := [ERSSkill.TOTAL];
+  Antiban.MinZoom := 15;
+  Antiban.MaxZoom := 20;
+end;
+
+function TScript.ProgressStep(): Boolean;
+begin
+  RSW.WebWalk(ButterFlyArray[self.walkSpot]);
+  waitUntil(RSW.AtTile(ButterFlyArray[self.walkSpot], 15), 500, 10000);
+  if ((self.walkSpot) = (High(ButterFlyArray))) then
+  begin
+    self.walkSpot := 0;
+  end
+  else
+  begin
+    self.walkSpot += 1;
+  end;
+  Result := True;
+end;
+
+procedure TScript.Init(MaxActions: Int32; MaxTime: Int64); override;
+begin
+  Name := 'ButterflyCatcher';
+  inherited;
+  Self.RSW.Setup([RSRegions.PISCATORIS]);
+  if not RSClient.IsLoggedIn() then
+    Login.LoginPlayer();
+end;
+
+function TScript.ClearInv(): Boolean;
+begin
+  repeat
+    inventory.ClickItem('Ruby harvest', 'Release');
+  until not (inventory.ContainsItem('Ruby harvest'));
+  Result := True;
+end;
+
+function TScript.ClickButterfly(): Boolean
+var
+  B: TBox;
+  TPA: TPointArray;
+  ATPA: T2DPointArray;
+  count: Int32;
+begin
+  count := inventory.CountItem("ruby harvest");
+  SRL.FindColors(TPA, CTS2(1912492, 4, 0.07, 0.36), mainscreen.bounds);
+  if TPA.Len <= 0 then
+  begin
+    self.ProgressStep();
+    Exit;
+  end
+  ATPA := TPA.Cluster(5);
+  ATPA.SortBySize();
+  TPA := ATPA.Merge();
+  mouse.Teleport(TPA[0]);
+  if (mainscreen.IsUpText("Catch")) then
+  begin
+    Mouse.Click(MOUSE_LEFT);
+    if (mainscreen.DidRedClick()) then
+    begin
+      waitUntil(count < inventory.CountItem("ruby harvest"), 500, 20000);
+    end
+
+  end
+
+  wait(1000);
+end;
+
+function TScript.GetState: EState;
+begin
+  if not (Inventory.ContainsItem('Butterfly jar')) then
+    Exit(EState.CLEARINV);
+  Exit(EState.CLICKBUTTERFLYSTATE);
+end;
+
+procedure TScript.Run(MaxActions: Int32; MaxTime: Int64);
+begin
+  Self.Init(MaxActions, MaxTime);
+  repeat
+    State := Self.GetState();
+    Action := ToStr(State);
+    case State of
+      WAIT_STATE: Wait(500, 800);
+      EState.CLEARINV: self.ClearInv();
+      EState.CLICKBUTTERFLYSTATE: self.ClickButterfly();
+      END_SCRIPT: Break;
+    end;
+    Self.DoAntiban;
+  until Self.ShouldStop();
+end;
+
+var
+  Script: TScript;
+{$IFDEF SCRIPT_GUI}
+
+type
+  TConfig = record
+     (TScriptForm) Selector: TLabeledCombobox;
+  end;
+
+procedure TConfig.StartScript(Sender: TObject);
+begin
+  Self.Init(Sender);
+  CurrentTask := ETask(Selector.Combobox.getItemIndex);
+end;
+
+
+procedure TConfig.Run(); override;
+begin
+  Self.Setup;
+  inherited;
+end;
+
+var
+  Config: TConfig;
+{$ENDIF}
+begin
+  Script.Run(WLSettings.MaxActions, WLSettings.MaxTime);
+end.
