@@ -12,6 +12,7 @@ begin
   WLSettings.Sleep.Enabled           := True; //Enables Sleep Breaks
   WLSettings.RemoteInput.Enabled     := True; //Enables Remote Input
   WLSettings.RemoteInput.HUDReport   := False; //Enables Graphical Progress Report
+  //RSHeightmap .Enabled := True;     RSClient.Image.Clear(); //terminatescript();
 end;
 
 
@@ -19,7 +20,7 @@ type
   ESeed = (GOLOVANOVA, BOLOGANO, LOGAVANO);
 
 var
-  CurrentSeed = ESeed.GOLOVANOVA;
+  CurrentSeed = ESeed.BOLOGANO;
 
 const
   UpgradeSeedBasedOnLevel = True;
@@ -31,7 +32,7 @@ const
 
 
 type
-  EFarmerState = (WAIT_STATE, WAIT_SKIP_STATE, WALK_SPOT, PLANT_SEED, WATER_SEED, CLEAR_SEED, HARVEST_SEED, GET_WATER, GAMEFINISHED, GAMESTART, LEVEL_UP, CLOSE_CONTEXT, HOPWORLDS, END_SCRIPT, CANCEL_USE, MOUSE_MISSED_PATCH);
+  EFarmerState = (GET_SEEDS, WAIT_STATE, WAIT_SKIP_STATE, WALK_SPOT, PLANT_SEED, WATER_SEED, CLEAR_SEED, HARVEST_SEED, GET_WATER, GAMEFINISHED, GAMESTART, LEVEL_UP, CLOSE_CONTEXT, HOPWORLDS, END_SCRIPT, CANCEL_USE, MOUSE_MISSED_PATCH);
   TTitheFarmer = record
      (TBaseWalkerScript) State: EFarmerState;
     Patches: TRSObject;
@@ -56,6 +57,7 @@ end;
 procedure TTitheFarmer.SetupObjects();
 begin
   Self.RSW.Setup([RSRegions.TITHE_FARM]);
+  //patches.Setup();
   Patches.UpText := [];
   Patches.Finder.Colors += CTS2(3035994, 11, 0.05, 0.19);
   Patches.Setup(4, PlanterArray);
@@ -64,6 +66,18 @@ begin
   SeedPlanted := False;
   RSObjects.TitheWaterBarrels.Setup(['> Water B']);
 end;
+
+procedure TTitheFarmer.Init(MaxActions: Int32; MaxTime: Int64); override;
+begin
+  inherited;
+
+  Self.SetupObjects();
+
+  PlanterArray := PlanterArray5;
+  WalkArray := WalkArray5;
+  nonModifiedPlanterArray := PlanterArray;
+end;
+
 
 function TTitheFarmer.IsLastStep(): Boolean;
 begin
@@ -94,7 +108,6 @@ begin
 
   if not Inventory.SetSelectedItem(Self.GetSeedString()) then
     Exit;
-
   Cuboid := RSW.GetCuboidMS(PlanterArray[Self.walkSpot],[1.5,1.5,0]);
   Mouse.Click(Cuboid.MinAreaRect(),MOUSE_LEFT);
 
@@ -105,10 +118,8 @@ begin
   Cuboid := RSW.GetCuboidMS(PlanterArray[Self.walkSpot], [1.5,1.5,0]);
   Mouse.Click(Cuboid.MinAreaRect(),MOUSE_LEFT);
   Wait(2000, 2500);
-
   if not WaitUntil(Mainscreen.IsUpText(['Water']), 50, 3000) then
     exit;
-
   Mouse.Click(MOUSE_LEFT);
   WaitUntil(not (MainScreen.IsUpText(['Water'], 50)), 200, 2000);
 end;
@@ -150,6 +161,8 @@ begin
 
   upText := MainScreen.GetUpText();
 
+
+
   if Self.Filter.UpText and (Self.UpText in upText) then
     Exit(True);
 
@@ -158,12 +171,6 @@ end;
 
 function TTitheFarmer.GetWater(): Boolean;
 begin
-  if not Minimap.PointInZoomRectangle(RSW.WorldToMM([2676, 2394])) then
-  begin
-    RSW.WebWalk([2670, 2394]);
-    WaitUntil(RSW.AtTile([2670, 2394]), 50, 5000);
-  end;
-
   if (Inventory.SetSelectedItem('Watering can')) and RSObjects.TitheWaterBarrels.Click then
     Result := WaitUntil(Inventory.CountItem('Watering can') = 0, 2000, 60000);
 
@@ -191,6 +198,44 @@ begin
 end;
 
 
+function TTitheFarmer.GetSeeds(): Boolean;
+begin
+  if not RSObjects.TitheTable.WalkClick() then
+      Exit;
+
+  Minimap.WaitMoving();
+
+  if (UpgradeSeedBasedOnLevel) then
+    case BaseStats.GetCurrentLevel(ERSSkill.FARMING) of
+      00..33: TerminateScript('You need at least level 34 farming!');
+      34..53: CurrentSeed := ESeed.GOLOVANOVA;
+      54..73: CurrentSeed := ESeed.BOLOGANO;
+      else    CurrentSeed := ESeed.LOGAVANO;
+    end;
+
+  if WaitUntil(Chat.ClickOption(Self.GetSeedString()), 200, 4000) then
+    Result := WaitUntil(Inventory.ContainsItem(Self.GetSeedString()), 200, 4000);
+end;
+
+function TTitheFarmer.RestartGame(): Boolean;
+begin
+  if not RSObjects.TitheDoor.WalkClick() then
+    Exit;
+
+  Minimap.WaitMoving();
+
+  Result := WaitUntil(Self.InFarm(), 100, 5000);
+
+  if Result then
+  begin
+    Self.walkSpot := 0;
+    PlanterArray := nonModifiedPlanterArray;
+    Self.GetWater();
+  end;
+end;
+
+
+
 function TTitheFarmer.PatchWet(point: TPoint): Boolean
 var
   B: TBox;
@@ -206,31 +251,30 @@ end;
 
 function TTitheFarmer.checkPlants(CheckHealth: Boolean= False): Boolean;
 var
-  I: Int32;
+  i: Int32;
 begin
-    if (Self.SeedPlanted = False) then
-      Exit(False);
+  if (Self.SeedPlanted = False) then
+    Exit;
+  Self.SeedPlanted := False;
 
-    Self.SeedPlanted := False;
-
-    for I := 0 to High(Planterarray) do
+  for i := 0 to High(Planterarray) do
+  begin
+    if not Minimap.PointInZoomRectangle(RSW.WorldToMM(Planterarray[i])) then
     begin
-      if not Minimap.PointInZoomRectangle(RSW.WorldToMM(Planterarray[I])) then
-      begin
-        RSW.WebWalk(Walkarray[I]);
-        WaitUntil(RSW.AtTile(Walkarray[I], 15), 50, 5000);
-      end;
-      if (Self.checkPlant(RSW.GetCuboidMS(PlanterArray[I],[1.5,1.5,0],[1,1]))) then
-      begin
-        Self.SeedPlanted := True;
-        if not CheckHealth then
-          Exit(True)
-        else
-        if not Self.PatchWet(RSW.GetTileMS(Planterarray[I]).Mean) then
-          Exit(True);
-      end;
+      RSW.WebWalk(Walkarray[I]);
+      WaitUntil(RSW.AtTile(Walkarray[I], 15), 50, 5000);
     end;
-    Exit(False);
+
+    if (Self.checkPlant(RSW.GetCuboidMS(PlanterArray[i],[1.5, 1.5, 0],[1, 1]))) then
+    begin
+      Self.SeedPlanted := True;
+      if not CheckHealth then
+        Exit(True);
+
+      if not Self.PatchWet(RSW.GetTileMS(Planterarray[I]).Mean()) then
+        Exit(True);
+    end;
+  end;
 end;
 
 function TTitheFarmer.ProgressStep(): Boolean;
@@ -293,36 +337,9 @@ begin
   end
 end;
 
-procedure TTitheFarmer.Free();
-begin
-  RSClient.Image.Clear();
-end;
 
-procedure TTitheFarmer.Init(MaxActions: Int32; MaxTime: Int64); override;
-begin
-  inherited;
 
-  Self.SetupObjects();
-
-  PlanterArray := PlanterArray5;
-  WalkArray := WalkArray5;
-  nonModifiedPlanterArray := PlanterArray;
-
-  if not MM2Ms.ZoomLevel < 6 then
-    RSMouseZoom.SetZoomLevel(Random(0, 5));
-
-  if (Self.OutsideFarm()) then
-    Self.RestartGame();
-
-  if (not (RSW.AtTile([2646, 2406], 20))) then
-    WaitUntil(Self.WalkToSpot(WalkArray[Self.walkSpot]), 50, 3000);
-
-  Wait(500, 1000);
-  if not MM2Ms.ZoomLevel < 6 then
-    RSMouseZoom.SetZoomLevel(Random(0, 5));
-end;
-
-function TTitheFarmer.GetState: EFarmerState;
+function TTitheFarmer.GetState(): EFarmerState;
 var
   me: TPoint;
   upText, tmp: String;
@@ -332,13 +349,21 @@ var
 begin
   me := Self.RSW.GetMyPos();
 
+  if Chat.LeveledUp() then
+    Exit(EFarmerState.LEVEL_UP);
+
   if (HOPIFOCCUPIED and me.WithinDistance(WalkArray[Self.walkSpot], 40) and Self.ResultCheckForPlayers()) then
     Exit(EFarmerState.HOPWORLDS);
 
   if Self.OutsideFarm(me) then
-    Exit(EFarmerState.GAMESTART);
+  begin
+    if not Inventory.ContainsItem(Self.GetSeedString()) then
+      Exit(EFarmerState.GET_SEEDS);
 
-  if Self.InFarm(me) and (Inventory.CountItem(Self.GetSeedString) = 0) and not Self.Checkplants() then
+    Exit(EFarmerState.GAMESTART);
+  end;
+
+  if not Inventory.ContainsItem(Self.GetSeedString()) and not Self.Checkplants() then
     Exit(EFarmerState.GAMEFINISHED);
 
   hasEnoughWater := Inventory.CountItem('Watering can') >= (WateringCans * 0.7);
@@ -390,16 +415,7 @@ begin
     Exit(EFarmerState.HARVEST_SEED);
 
   Exit(EFarmerState.MOUSE_MISSED_PATCH);
-
-
-
-  if Chat.LeveledUp() then
-  begin
-    Exit(EFarmerState.LEVEL_UP);
-  end;
 end;
-
-
 
 procedure TTitheFarmer.Run(MaxActions: Int32; MaxTime: Int64);
 begin
@@ -420,6 +436,7 @@ begin
       EFarmerState.GET_WATER: begin Self.DoAntiban(); Self.GetWater(); end;
       EFarmerState.GAMEFINISHED: begin Self.DoAntiban(); Self.EndGame(); end;
       EFarmerState.GAMESTART: Self.RestartGame();
+      EFarmerState.GET_SEEDS: Self.GetSeeds();
       EFarmerState.HOPWORLDS: begin Self.CheckForPlayers(); Self.DoAntiban(); end;
       EFarmerState.LEVEL_UP: Chat.HandleLevelUp();
       EFarmerState.END_SCRIPT: Break;
@@ -437,59 +454,24 @@ function TTitheFarmer.EndGame(): Boolean;
 var
 StartXP: Int32 := XPBar.Read;
 begin
-  RSMouseZoom.SetZoomLevel(Random(30,80));
-  //deposit sack
   if Inventory.ContainsAny(['Bologano fruit', 'Golovanova fruit', 'Logavano fruit']) then
   begin
+    XPBar.EarnedXP();
     if not RSObjects.TitheSacks.WalkClick then
       Exit;
-    if not WaitUntil(XPBar.Read() > StartXP,100,5000) then
+    Minimap.WaitMoving();
+    if not XPBar.WaitXP(5000) then
       Exit;
   end;
 
-  RSObjects.TitheDoor.WalkClick();
+  if not RSObjects.TitheDoor.WalkClick() then
+    Exit;
 
-  Result := WaitUntil(Self.OutsideFarm,100,10000)
+  Minimap.WaitMoving();
 
-  if Result then
-    Wait(1500, 3000);
+  Result := WaitUntil(Self.OutsideFarm(), 200, 5000);
 end;
 
-function TTitheFarmer.RestartGame(): Boolean;
-begin
-  if not MM2Ms.ZoomLevel > 25 then
-    RSMouseZoom.SetZoomLevel(Random(30, 80));
-
-  if Inventory.CountItem(Self.GetSeedString) = 0 then
-  begin
-    RSObjects.TitheTable.WalkClick();
-
-    if (UpgradeSeedBasedOnLevel) then
-      case BaseStats.GetCurrentLevel(ERSSkill.FARMING) of
-        00..33: TerminateScript('You need at least level 34 farming!');
-        34..53: CurrentSeed := ESeed.GOLOVANOVA;
-        54..73: CurrentSeed := ESeed.BOLOGANO;
-        else    CurrentSeed := ESeed.LOGAVANO;
-      end;
-
-    WaitUntil(Chat.FindOption(Self.GetSeedString()), 200, 5000);
-    Wait(300, 800);
-    Chat.ClickOption(Self.GetSeedString());
-    WaitUntil(Inventory.ContainsItem(Self.GetSeedString()), 200, 3000);
-  end;
-
-  if Self.OutsideFarm() then
-  begin
-    if RSObjects.TitheDoor.WalkClick() and not WaitUntil(Self.InFarm(),100,5000) then
-      Exit;
-  end;
-
-  Self.walkSpot := 0;
-  Result := True;
-  PlanterArray := nonModifiedPlanterArray;
-  Self.GetWater();
-  RSMouseZoom.SetZoomLevel(Random(0, 5));
-end;
 //stolen code from flight to hop worlds..
 function TRSLogout.GetCurrentWorld: Int32;
 begin
